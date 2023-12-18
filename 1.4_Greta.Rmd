@@ -124,14 +124,18 @@ selected_columns <- c("personid",
                       paste0("full_message_vig_", 1:8))
 df_subset <- df_survey[selected_columns]
 
-#print(df_subset)
+#df_subset
 
 
 ```
 
 ```{r}
 # Create a data frame with unique message texts
-unique_messages <- data.frame(message = unique(unlist(df_subset[, grep("^full_message_vig_", names(df_subset))])))
+unique_messages <- data.frame(
+  message_id = seq_along(unique(unlist(df_subset[, grep("^full_message_vig_", names(df_subset))]))),
+  message = unique(unlist(df_subset[, grep("^full_message_vig_", names(df_subset))]))
+)
+
 # There are 37 unique statements that were evaluated
 ```
 
@@ -152,7 +156,7 @@ colnames(df_subset_long) <- c("personid", "vig_num", "full_message", "rating_hat
 df_subset_long$vig_num <- as.numeric(df_subset_long$vig_num)
 
 # View the resulting data frame
-print(df_subset_long)
+df_subset_long
 ```
 
 ```{r}
@@ -161,13 +165,11 @@ print(df_subset_long)
 # Define the specific message
 target_message <- "Women should not be allowed to serve in the army."
 
-# Create a subset with selected variables for the target message FOR VIG_1 ONLY
+# Create a subset with selected variables for the target message
 subset_women_army <- df_subset_long %>%
   filter(select(., starts_with("full_message")) == target_message) %>%
   select(personid, full_message, rating_hateful)
 
-# Print the subset
-print(subset_women_army)
 
 # Calculate mean and standard deviation for the hateful ratings in the subset
 subset_women_army <- subset_women_army %>%
@@ -177,49 +179,187 @@ subset_women_army <- subset_women_army %>%
   )
 
 # Print the updated subset
-print(subset_women_army)
-```
-
-```{r}
+subset_women_army
 
 
 
 ```
+```{r}
+# Try with second example
+target_message_2 <- "Muslim immigrants are stupid animals."
+
+# Create a subset with selected variables for the target message
+subset_muslim <- df_subset_long %>%
+  filter(select(., starts_with("full_message")) == target_message_2) %>%
+  select(personid, full_message, rating_hateful)
+
+
+# Calculate mean and standard deviation for the hateful ratings in the subset
+subset_muslim <- subset_muslim %>%
+  mutate(
+    mean_hatefulness = mean(rating_hateful, na.rm = TRUE),
+    sd_hatefulness = sd(rating_hateful, na.rm = TRUE)
+  )
+
+# Print the updated subset
+subset_muslim
+```
 
 ```{r}
+# Create an empty list to store results
+result_list <- list()
 
-# Create a data frame to store the results
-message_stats <- data.frame(message = unique_messages$message)
-
-# Calculate mean and standard deviation for each message
-for (var_suffix in 1:8) {
-  #topic_var <- paste0("vig_", var_suffix, "_topic")
-  message_var <- paste0("full_message_vig_", var_suffix)
-  rating_var <- paste0("vig_", var_suffix, "_hateful")
+# Loop through each unique message
+for (target_message in unique_messages$message) {
+  # Create a subset for the target message
+  subset_target_message <- df_subset_long %>%
+    filter(full_message == target_message) %>%
+    left_join(unique_messages, by = c("full_message" = "message")) %>%
+    select(message_id, personid, full_message, rating_hateful)
   
-  # Create a new column for each vig_x_hateful variable
-  message_stats <- message_stats %>%
-    left_join(
-      df_subset %>% 
-        select(message = !!message_var, rating = !!rating_var) %>% 
-        group_by(message) %>% 
-        summarise(
-          mean_hatefulness = mean(rating, na.rm = TRUE),
-          sd_hatefulness = sd(rating, na.rm = TRUE)
-        ),
-      by = "message"
+  # Calculate mean and standard deviation for the hatefulness ratings in the subset
+  subset_target_message <- subset_target_message %>%
+    mutate(
+      mean_hatefulness = mean(rating_hateful, na.rm = TRUE),
+      sd_hatefulness = sd(rating_hateful, na.rm = TRUE)
     )
+  
+  # Add the result to the list
+  result_list[[target_message]] <- subset_target_message
 }
 
-# Print the results
-print(message_stats)
+result_list
+
+```
+
+```{r}
+# Create a copy of the original result_list
+result_list_updated <- lapply(result_list, function(current_table) {
+  # Count the occurrences of each rating
+  rating_counts <- table(current_table$rating_hateful)
+  
+  # Create new columns with counts for each rating
+  for (i in 1:5) {
+    col_name <- paste0("total_rating_", i)
+    current_table[col_name] <- rating_counts[as.character(i)]
+  }
+  
+  return(current_table)
+})
+
+result_list_updated
+
+```
+
+```{r test if NA can be true}
+result <- df_subset_long %>%
+  filter(rating_hateful == 5, full_message == "Women should be a caring mother and not pursue a selfish career.") %>%
+  summarise(count = n())
+
+# Access the count value
+count_value <- result$count
+
+count_value
+```
+
+```{r binding subset tables together}
+
+# Combine all results into one data frame
+result_table <- bind_rows(result_list_updated, .id = "message") %>%
+  group_by(message) %>%
+  filter(row_number() == 1) %>%
+  ungroup() %>%
+  mutate_all(~replace(., is.na(.), 0)) %>% # set NA to 0
+  select(message_id, message, mean_hatefulness, sd_hatefulness, total_rating_1, total_rating_2, total_rating_3, total_rating_4, total_rating_5)
+
+#result_table
+
+
+```
+
+```{r}
+# Calculate relative percentages for each row
+result_table <- result_table %>%
+  mutate(
+    total_ratings = rowSums(select(., starts_with("total_rating_"))),
+    pct_rating_1 = total_rating_1 / total_ratings * 100,
+    pct_rating_2 = total_rating_2 / total_ratings * 100,
+    pct_rating_3 = total_rating_3 / total_ratings * 100,
+    pct_rating_4 = total_rating_4 / total_ratings * 100,
+    pct_rating_5 = total_rating_5 / total_ratings * 100
+  )
+
+result_table
+```
+
+
+```{r long format}
+
+result_long <- result_table %>%
+  select(message, pct_rating_1, pct_rating_2, pct_rating_3, pct_rating_4, pct_rating_5) %>%
+  pivot_longer(cols = starts_with("pct_rating_"), names_to = "rating", values_to = "percentage")
+
+```
+
+```{r}
+# Merge the data frames based on "full_message" and "message_id"
+merged_data <- merge(df_subset_long, result_table, by.x = "full_message", by.y = "message", all.x = TRUE)
+
+# Select the columns you want to keep
+selected_columns <- c("personid","full_message", "rating_hateful", "mean_hatefulness", "sd_hatefulness")
+
+# Create a new data frame with the selected columns
+df_merged_long <- merged_data[selected_columns]
+
+# View the final result
+print(df_merged_long)
+
+```
+
+
+```{r}
+ ?gt_plt_dist
+   
+# Assuming df_merged_long is already merged with result_table into df_subset_long
+# with "full_message" and "message_id" as the common columns
+gt_tab <- df_merged_long %>%
+  group_by(full_message) %>%
+  summarize(
+    percentage_data = list(rating_hateful),
+    mean_hatefulness = sprintf("%.2f", first(mean_hatefulness)),
+    sd_hatefulness = sprintf("%.2f", first(sd_hatefulness)),
+    .groups = "drop"
+  ) %>%
+  rename(
+   "Message" = full_message,
+    "Rating 1-5 (%)" = percentage_data,
+   "Average Rating" = mean_hatefulness,
+    "Standard Deviation" = sd_hatefulness
+  )%>%
+ gt() %>%
+  gt_theme_espn() %>%
+  tab_header(
+    title = "Customized Table Header"
+  ) %>%
+  tab_stubhead(
+    label = "Messages"
+  ) %>%
+  gt_plt_dist(
+    "Rating 1-5 (%)",
+    type = "histogram",
+    fig_dim = c(10, 30),
+    line_color = "black",
+    fill_color = "grey",
+    bw = 1
+  )
+  
+gt_tab
+
 
 
 ```
 
 
-```{r plot, echo=FALSE}
 
-```
 
 
