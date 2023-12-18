@@ -1,0 +1,225 @@
+---
+title: "1.4 Greta"
+author: "Greta Lotz"
+date: "2023-12-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      eval = TRUE,
+                      error = FALSE,
+                      message = FALSE,
+                      warning = FALSE,
+                      comment = NA)
+```
+
+```{r packages, include = T}
+library(tidyverse)
+library(rvest)
+library(httr)
+library(knitr)
+library(xml2) 
+library(stringr)
+library(purrr)
+library(haven)
+library(scales)
+library(gt)
+library(gtExtras)
+
+```
+
+1.4 Perceived hatefulness of social media post
+Create a gt/gtExtras table that reports the aggregated perceived hatefulness of a set of social media posts, following good practice of visualization. For this task, consider the following:
+• Some guidance for the data preparation:
+o The content of the social media posts is stored in two types of variables:
+vig_{x}_topic and vig_{x}_sender_message. Every respondent evaluated 8 different messages, which is why x goes from 1 to 8. The perception of hatefulness is stored in the variables vig_{x}_hateful.
+o Drop observations where vig_1_hateful is missing.
+o Recodethevig_{x}_topic variables according to the following scheme:
+gender = "Women", ideologydems = "Democrats", ideologyreps =
+"Republicans", muslim = "Muslim immigrants".
+o Construct the full content of the message by pasting together the strings
+of the recoded vig_{x}_topic and vig_{x}_sender_message variables. For instance, one of the full messages reads: “Republicans should be stopped from spreading falsehoods.”
+o For the evaluation, you should average across all evaluated vignettes across all responses, i.e. your unit of analysis is vignettes, not respondents.
+• Your table should contain the following information: (1) The message text, (2) the mean and standard deviation of the hatefulness rating by message, and (3) a
+barplot displaying the distribution of hatefulness ratings 1 to 5 per message.
+• The average hatefulness column should be colored by value.
+• The table should provide a meaningful title and description, making it a
+standalone product that speaks for itself.
+```{r load and remove NA}
+df_survey <- readRDS("survey/meof_usa_survey_df.rds")
+
+# Drop observations where vig_1_hateful is missing
+df_survey <- df_survey[!is.na(df_survey$vig_1_hateful), ]
+
+```
+
+```{r recode vignette topic}
+
+# Recoding the vig_(x)_topic variable
+
+#print(df_survey$vig_1_topic)
+
+# Vector with recoding rules for loop
+recoding_rules <- c("gender" = "Women",
+                    "ideologydems" = "Democrats",
+                    "ideologyreps" = "Republicans",
+                    "muslim" = "Muslim immigrants")
+
+# Loop through the variables and apply the recoding rules
+for (var_suffix in 1:8) {
+  var_name <- paste0("vig_", var_suffix, "_topic")
+  df_survey <- df_survey %>%
+    mutate_at(vars(starts_with(var_name)), funs(recode(., !!!recoding_rules)))
+}
+
+#print(df_survey$vig_1_topic)
+```
+
+```{r combine variables topic and sender_message}
+# Combine variables _topic and _sender_message 1-8 into 8 new variables with the full string
+
+#print(df_survey$vig_1_sender_message)
+# First, clean up the string "Women should be caring mothers and not pursue \r\na selfish career." 
+
+# Loop through the variables and process the sender messages
+for (var_suffix in 1:8) {
+  sender_message_var <- paste0("vig_", var_suffix, "_sender_message")
+  df_survey[[sender_message_var]] <- gsub("[\r\n\t]", " ", df_survey[[sender_message_var]])
+  df_survey[[sender_message_var]] <- gsub("\\s+", " ", df_survey[[sender_message_var]])
+}
+
+#print(df_survey$vig_8_sender_message)
+
+
+# Construct full message for vig_1
+
+# Test for one
+# df_survey <- df_survey %>%
+# mutate(full_message_vig_1 = paste(vig_1_topic, vig_1_sender_message, sep = " "))
+#print(df_survey$full_message_vig_1)
+
+# Loop through the variables and create new columns
+for (var_suffix in 1:8) {
+  topic_var <- paste0("vig_", var_suffix, "_topic")
+  message_var <- paste0("vig_", var_suffix, "_sender_message")
+  new_column_name <- paste0("full_message_vig_", var_suffix)
+  
+  df_survey <- df_survey %>%
+    mutate(!!new_column_name := paste(.data[[topic_var]], .data[[message_var]], sep = " "))
+}
+
+# Display the new columns to verify
+#new_column_names <- grep("^full_message_vig_", names(df_survey), value = TRUE)
+#print(df_survey[, new_column_names, drop = FALSE])
+```
+
+
+```{r create the table 1}
+# Create a subset with the relevant variables (optional, for my own improved workflow)
+
+# Extract the columns for each x in the range 1 to 8
+selected_columns <- c("personid", 
+                      paste0("vig_", 1:8, "_hateful"), 
+                      paste0("full_message_vig_", 1:8))
+df_subset <- df_survey[selected_columns]
+
+#print(df_subset)
+
+
+```
+
+```{r}
+# Create a data frame with unique message texts
+unique_messages <- data.frame(message = unique(unlist(df_subset[, grep("^full_message_vig_", names(df_subset))])))
+# There are 37 unique statements that were evaluated
+```
+
+```{r transform into long format}
+
+# Specify the column names for pivoting
+cols_to_long <- c(paste0("full_message_vig_", 1:8), paste0("vig_", 1:8, "_hateful"))
+
+# Use pivot_longer to transform the data frame to long format
+df_subset_long <- pivot_longer(df_subset, cols = cols_to_long, 
+                        names_to = c(".value", "vig_num"), 
+                        names_pattern = "(\\w+)_([0-9]+)")
+
+# Rename the columns as needed
+colnames(df_subset_long) <- c("personid", "vig_num", "full_message", "rating_hateful")
+
+# Convert vig_num to numeric if needed
+df_subset_long$vig_num <- as.numeric(df_subset_long$vig_num)
+
+# View the resulting data frame
+print(df_subset_long)
+```
+
+```{r}
+
+# Test to find out if method works
+# Define the specific message
+target_message <- "Women should not be allowed to serve in the army."
+
+# Create a subset with selected variables for the target message FOR VIG_1 ONLY
+subset_women_army <- df_subset_long %>%
+  filter(select(., starts_with("full_message")) == target_message) %>%
+  select(personid, full_message, rating_hateful)
+
+# Print the subset
+print(subset_women_army)
+
+# Calculate mean and standard deviation for the hateful ratings in the subset
+subset_women_army <- subset_women_army %>%
+  mutate(
+    mean_hatefulness = mean(rating_hateful, na.rm = TRUE),
+    sd_hatefulness = sd(rating_hateful, na.rm = TRUE)
+  )
+
+# Print the updated subset
+print(subset_women_army)
+```
+
+```{r}
+
+
+
+```
+
+```{r}
+
+# Create a data frame to store the results
+message_stats <- data.frame(message = unique_messages$message)
+
+# Calculate mean and standard deviation for each message
+for (var_suffix in 1:8) {
+  #topic_var <- paste0("vig_", var_suffix, "_topic")
+  message_var <- paste0("full_message_vig_", var_suffix)
+  rating_var <- paste0("vig_", var_suffix, "_hateful")
+  
+  # Create a new column for each vig_x_hateful variable
+  message_stats <- message_stats %>%
+    left_join(
+      df_subset %>% 
+        select(message = !!message_var, rating = !!rating_var) %>% 
+        group_by(message) %>% 
+        summarise(
+          mean_hatefulness = mean(rating, na.rm = TRUE),
+          sd_hatefulness = sd(rating, na.rm = TRUE)
+        ),
+      by = "message"
+    )
+}
+
+# Print the results
+print(message_stats)
+
+
+```
+
+
+```{r plot, echo=FALSE}
+
+```
+
+

@@ -1,0 +1,181 @@
+---
+title: "Data Science N00Bs"
+author: "Malin Emma Holmqvist - Greta Annemie Lotz - Samantha Gail Whitley - Carl Johan Steninge-Otto (221959)"
+date: "`r format(Sys.time(), '%B %d, %Y | %H:%M:%S | %Z')`"
+output:
+  html_document:
+    code_folding: show
+    df_print: paged
+    highlight: tango
+    number_sections: no
+    theme: cosmo
+    toc: no
+---
+  
+
+<style>
+div.answer {background-color:#f3f0ff; border-radius: 5px; padding: 20px;}
+</style>
+
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      eval = TRUE,
+                      error = FALSE,
+                      message = FALSE,
+                      warning = FALSE,
+                      comment = NA)
+```
+
+
+=======
+
+```{r, include = T}
+library(tidyverse)
+library(rvest)
+library(httr)
+library(knitr)
+library(xml2) 
+library(stringr)
+library(purrr)
+library(haven)
+library(scales)
+
+```
+
+
+
+```{r}
+df_survey <- readRDS("survey/meof_usa_survey_df.rds")
+df_tracking <- readRDS("tracking/meof_usa_web_df.rds")
+
+df_survey <- zap_labels(df_survey)
+df_tracking <- zap_labels(df_tracking)
+```
+
+
+Question 1 
+
+```{r}
+# Assuming df_survey is your data frame
+
+# Check the counts of each unique value in the 'presvote16post' column
+pres_vote_counts <- table(df_survey$presvote16post)
+
+# Get the count of people who voted for Trump (assuming 2 stands for Trump)
+trump_votes <- pres_vote_counts[2]
+
+# Calculate the total number of people
+total_people <- nrow(df_survey)
+
+# Calculate the fraction of people who voted for Trump
+fraction_trump_votes <- trump_votes / total_people
+
+cat("The fraction of people who voted for Trump in 2016 is: ", percent(fraction_trump_votes), "\n")
+
+
+```
+
+Question 2 
+```{r}
+
+
+# Assuming tracking_df is your data frame
+
+# Group by domain and calculate the number of visits and total duration for each domain
+domain_stats <- df_tracking %>%
+  group_by(domain) %>%
+  summarise(visits = n(), total_duration_hours = sum(duration) / 60)  # Convert minutes to hours
+
+# Find the most popular domain by visits
+most_popular_by_visits <- domain_stats[which.max(domain_stats$visits), ]
+
+cat("Most popular domain by visits: ", most_popular_by_visits$domain, "\n")
+
+# Find the most popular domain by overall time spent in hours
+most_popular_by_time <- domain_stats[which.max(domain_stats$total_duration_hours), ]
+
+cat("Most popular domain by overall time spent: ", most_popular_by_time$total_duration_hours, "\n")
+
+```
+
+Question 3
+```{r}
+#person with the most visits
+total_visits <- df_tracking %>%
+  group_by(personid) %>%
+  summarise(total_visits = n()) %>%
+  arrange(desc(total_visits))  # Arrange in descending order of visits
+
+# Merging with df_survey to get person information
+result <- df_survey %>%
+  left_join(total_visits, by = "personid") %>%
+  arrange(desc(total_visits))  # Arrange by total_visits to find the person with the most visits
+
+# Selecting personid, gender, birthyr, and total_visits for the person with most visits
+person_most_visits <- result[1, c("personid", "gender", "birthyr", "total_visits")]
+person_most_visits
+```
+Question 4
+```{r}
+# Filter domains containing the specified string
+filtered_df <- df_tracking %>%
+  filter(grepl("google", domain, fixed = TRUE))
+
+# Find the number of unique visited domains containing the string
+unique_domains_count <- length(unique(filtered_df$domain))
+
+cat("Number of unique visited domains containing the string ',': ", unique_domains_count, "\n")
+
+# Group by domain and calculate the overall visits for each domain
+domain_stats <- filtered_df %>%
+  group_by(domain) %>%
+  summarise(overall_visits = n())
+
+# Find the 10 most popular domains in terms of overall visits
+top_10_domains <- domain_stats %>%
+  arrange(desc(overall_visits)) %>%
+  head(10)
+
+cat("Top 10 domains in terms of overall visits:\n")
+print(top_10_domains)
+
+```
+
+```{r}
+
+df_tracking_foxnews <- df_tracking %>%
+  group_by(personid) %>%
+  mutate(fox_news_visits = sum(grepl("foxnews\\.com", domain)) >= 5) %>%
+  ungroup() %>%
+  distinct(personid, .keep_all = TRUE) %>%
+  select(personid, fox_news_visits)
+
+foxnewslm_df <- df_survey %>%
+  left_join(df_tracking_foxnews, by = "personid") 
+
+# Recode presvote16post to reflect Trump as 1 and Clinton as 0
+foxnewslm_df <- foxnewslm_df %>%
+  mutate(voted_for = ifelse(presvote16post == 2, 1, 0))
+
+#recode fox news visits to dummy
+foxnewslm_df <- foxnewslm_df %>%
+  mutate(fox_news_visits = as.numeric(fox_news_visits))
+
+#recode gender
+foxnewslm_df <- foxnewslm_df %>%
+  mutate(gender = ifelse(gender == 1, 1, 0))
+
+# Create a logistic regression model and calculate the predicted probabilities
+# Fit the logistic regression model
+model <- glm(fox_news_visits ~ voted_for + gender + educ, data = foxnewslm_df, family = "binomial")
+
+model
+
+# Calculate the predicted probability change for people reporting to have voted for Trump vs. Clinton
+prob_change_trump_vs_clinton <- exp(1.21088) / (exp(1.21088) + 1) - 0.5
+cat("Predicted probability change for people reporting to have voted for Trump (vs. Clinton): ", prob_change_trump_vs_clinton, "\n")
+
+```
+
+***
