@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r packages, include = T}
+```{r packages, warning=FALSE, include=}
 library(tidyverse)
 library(knitr)
 library(scales)
@@ -94,6 +94,8 @@ df_subset <- df_survey[selected_columns]
 ```
 
 ```{r warning=FALSE}
+## In this next part I switch to long format, separate the df into subsets according to each message and calculate the mean rating and standard devialtion
+
 # Create a data frame with unique message texts
 unique_messages <- data.frame(
   message_id = seq_along(unique(unlist(df_subset[, grep("^full_message_vig_", names(df_subset))]))),
@@ -123,7 +125,6 @@ for (target_message in unique_messages$message) {
     filter(full_message == target_message) %>%
     left_join(unique_messages, by = c("full_message" = "message")) %>%
     select(message_id, personid, full_message, rating_hateful)
-  
   # Calculate mean and standard deviation for the hatefulness ratings in the subset
   subset_target_message <- subset_target_message %>%
     mutate(
@@ -147,7 +148,6 @@ result_list_updated <- lapply(result_list, function(current_table) {
     col_name <- paste0("total_rating_", i)
     current_table[col_name] <- rating_counts[as.character(i)]
   }
-  
   return(current_table)
 })
 
@@ -222,7 +222,7 @@ gt_tab <- df_merged_long %>%
   gt_theme_espn() %>%
   tab_header(
     title = "Perceived Hate of Social Media Messages", 
-    subtitle = paste("Each respondent (n= 1220) evaluated eight distinct messages with answers ranging from 1 - 'Not hateful at all' to 5-", " 'Extremely hateful", superscript_1, "\n")
+    subtitle = paste("Each respondent (a US sample of n= 1220) evaluated eight distinct messages with answers ranging from 1 - 'Not hateful at all' to 5-", " 'Extremely hateful", superscript_1, "\n")
   ) %>%
   tab_spanner(
     label = "1|2|3|4|5",
@@ -256,7 +256,7 @@ gt_tab <- df_merged_long %>%
   )%>%
   tab_style(
     style = list(
-      cell_fill(color = "#90EE90", alpha = 0.2) 
+      cell_fill(color = "#E6E6FA", alpha = 0.2) 
     ),
     locations = cells_body(rows = grepl("^Muslim immigrants", Message))
   )%>%
@@ -269,9 +269,12 @@ gt_tab <- df_merged_long %>%
 data_color(
     columns = `Average Rating`,
     target_columns = `Average Rating`,
-    palette = c("green", "red")
+    palette = c("blue", "orange") # a bit unusual when used to a green to red gradient but this is color blind friendly and since it is ordered according to value, it alleviates some of the importance of the color while still offering good comparability in the most extreme values per group. Just through this, a color blind person should be able to see when a new group starts as well, since I am aware the light row shading is not accessible for all.
   )
 
 gt_tab
+
+
+## A comment on the similar messages: I went back and forth about combining the similar sentences (...are stupid animals./ ...are a stupid animal. and ...a caring mother/ caring mothers) into one but ended up deciding against it. These are the same messages as in the guide and there is no more information why they are so similar. I notices the ones with the wrong grammar where taken less seriously, since they have a slightly less high average rating. This also played into me not wanting to combine them. 
 ```
 
