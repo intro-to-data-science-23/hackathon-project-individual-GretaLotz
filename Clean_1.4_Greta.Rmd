@@ -190,6 +190,11 @@ df_merged_long <- merged_data[selected_columns]
 
 ```{r warning=FALSE}
 ## Table 
+
+# For a reference to a foot note
+superscript_1 = "\u00B9"
+
+# gt table
 gt_tab <- df_merged_long %>%
   group_by(full_message) %>%
   summarize(
@@ -217,7 +222,7 @@ gt_tab <- df_merged_long %>%
   gt_theme_espn() %>%
   tab_header(
     title = "Perceived Hate of Social Media Messages", 
-    subtitle = "Each respondent (n= 1220) evaluated eight distinct messages with answers ranging from 1 - 'Not hateful at all' to 5- 'Extremely hateful'"
+    subtitle = paste("Each respondent (n= 1220) evaluated eight distinct messages with answers ranging from 1 - 'Not hateful at all' to 5-", " 'Extremely hateful", superscript_1, "\n")
   ) %>%
   tab_spanner(
     label = "1|2|3|4|5",
@@ -234,7 +239,9 @@ gt_tab <- df_merged_long %>%
     fill_color = "grey",
     bw = 1
   ) %>%
-  tab_source_note(md("Data source: The Media Exposure and Opinion Formation (MEOF) study - USA. The vignette experiment was conducted in 2019.")) %>%
+  tab_source_note(md("1 Full range of answers: 1-Not hateful at all; 2-Not very hateful; 3-Somewhat hateful; 4-Very hateful; 5- Extremely hateful 
+    \n Data source: The Media Exposure and Opinion Formation (MEOF) study - USA. 
+    \n The vignette experiment was conducted in 2019.")) %>%
   tab_style(
     style = list(
       cell_fill(color = "lightblue", alpha = 0.2) 

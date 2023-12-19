@@ -306,10 +306,10 @@ gt_tab <- df_merged_long %>%
   gt_theme_espn() %>%
   tab_header(
     title = "Perceived Hate of Social Media Messages", 
-    subtitle = "Each respondent (n= 1220) evaluated eight distinct messages with answers ranging from 1 - 'Not hateful at all' to 5- 'Extremely hateful'"
+    subtitle = "Each respondent (a US sample of n= 1220) evaluated eight distinct messages with answers ranging from 1 - 'Not hateful at all' to 5- 'Extremely hateful'"
   ) %>%
   tab_spanner(
-    label = "1|2|3|4|5",
+    label = "1 | 2 | 3 | 4 | 5",
     columns = 'Rating (%)'
   ) %>%
   tab_stubhead(
@@ -323,7 +323,8 @@ gt_tab <- df_merged_long %>%
     fill_color = "grey",
     bw = 1
   ) %>%
-  tab_source_note(md("Data source: The Media Exposure and Opinion Formation (MEOF) study - USA. The vignette experiment was conducted in 2019.")) %>%
+  tab_source_note(md("Data source: The Media Exposure and Opinion Formation (MEOF) study - USA. The vignette experiment was conducted in 2019. n\ <1> Not hateful at all <2> Not very hateful <3> Somewhat hateful <4> Very hateful
+<5> Extremely hateful")) %>%
   tab_style(
     style = list(
       cell_fill(color = "lightblue", alpha = 0.2) 
