@@ -1,17 +1,12 @@
 ---
-title: "1.4 Greta"
+title: "1.4 clean"
 author: "Greta Lotz"
-date: "2023-12-18"
+date: "2023-12-19"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE,
-                      eval = TRUE,
-                      error = FALSE,
-                      message = FALSE,
-                      warning = FALSE,
-                      comment = NA)
+knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r packages, include = T}
@@ -24,16 +19,14 @@ library(haven)
 
 ```
 
-```{r load and remove NA}
+```{r warning=FALSE}
+
 df_survey <- readRDS("survey/meof_usa_survey_df.rds")
 df_survey <- zap_labels(df_survey)
 
+## Cleaning
 # Drop observations where vig_1_hateful is missing
 df_survey <- df_survey[!is.na(df_survey$vig_1_hateful), ]
-
-```
-
-```{r recode vignette topic}
 
 # Recoding the vig_(x)_topic variable
 
@@ -53,9 +46,7 @@ for (var_suffix in 1:8) {
 }
 
 #print(df_survey$vig_1_topic)
-```
 
-```{r combine variables topic and sender_message}
 # Combine variables _topic and _sender_message 1-8 into 8 new variables with the full string
 
 #print(df_survey$vig_1_sender_message)
@@ -91,12 +82,8 @@ for (var_suffix in 1:8) {
 # Display the new columns to verify
 #new_column_names <- grep("^full_message_vig_", names(df_survey), value = TRUE)
 #print(df_survey[, new_column_names, drop = FALSE])
-```
 
-
-```{r create the table 1}
 # Create a subset with the relevant variables (optional, for my own improved workflow)
-
 # Extract the columns for each x in the range 1 to 8
 selected_columns <- c("personid", 
                       paste0("vig_", 1:8, "_hateful"), 
@@ -104,22 +91,16 @@ selected_columns <- c("personid",
 df_subset <- df_survey[selected_columns]
 
 #df_subset
-
-
 ```
 
-
-```{r}
+```{r warning=FALSE}
 # Create a data frame with unique message texts
 unique_messages <- data.frame(
   message_id = seq_along(unique(unlist(df_subset[, grep("^full_message_vig_", names(df_subset))]))),
   message = unique(unlist(df_subset[, grep("^full_message_vig_", names(df_subset))]))
 )
 
-# There are 37 unique statements that were evaluated
-```
-
-```{r transform into long format}
+##Transform into long format
 # Specify the column names for pivoting
 cols_to_long <- c(paste0("full_message_vig_", 1:8), paste0("vig_", 1:8, "_hateful"))
 
@@ -128,43 +109,10 @@ df_subset_long <- pivot_longer(df_subset, cols = cols_to_long,
                         names_to = c(".value", "vig_num"), 
                         names_pattern = "(\\w+)_([0-9]+)")
 
-# Rename the columns as needed
+# Rename the columns
 colnames(df_subset_long) <- c("personid", "vig_num", "full_message", "rating_hateful")
 
-# Convert vig_num to numeric if needed
-df_subset_long$vig_num <- as.numeric(df_subset_long$vig_num)
-
-# View the resulting data frame
-#df_subset_long
-```
-
-```{r}
-
-# Test to find out if method works
-# Define the specific message
-target_message <- "Women should not be allowed to serve in the army."
-
-# Create a subset with selected variables for the target message
-subset_women_army <- df_subset_long %>%
-  filter(select(., starts_with("full_message")) == target_message) %>%
-  select(personid, full_message, rating_hateful)
-
-
-# Calculate mean and standard deviation for the hateful ratings in the subset
-subset_women_army <- subset_women_army %>%
-  mutate(
-    mean_hatefulness = mean(rating_hateful, na.rm = TRUE),
-    sd_hatefulness = sd(rating_hateful, na.rm = TRUE)
-  )
-
-# Print the updated subset
-#subset_women_army
-
-
-
-```
-
-```{r}
+## Create tibbles for each individual message
 # Create an empty list to store results
 result_list <- list()
 
@@ -186,13 +134,10 @@ for (target_message in unique_messages$message) {
   # Add the result to the list
   result_list[[target_message]] <- subset_target_message
 }
-
 #result_list
 
-```
-
-```{r}
-# Create a copy of the original result_list
+# This next part might have been possible in one step with the previous loop but I did not get that to run
+# Create a copy of the original result_list 
 result_list_updated <- lapply(result_list, function(current_table) {
   # Count the occurrences of each rating
   rating_counts <- table(current_table$rating_hateful)
@@ -207,10 +152,10 @@ result_list_updated <- lapply(result_list, function(current_table) {
 })
 
 #result_list_updated
-
 ```
 
-```{r test if NA can be true}
+```{r Test NA, eval=FALSE, include=FALSE}
+# Test if NAs can be true
 result <- df_subset_long %>%
   filter(rating_hateful == 5, full_message == "Women should be a caring mother and not pursue a selfish career.") %>%
   summarise(count = n())
@@ -218,12 +163,11 @@ result <- df_subset_long %>%
 # Access the count value
 count_value <- result$count
 
-#count_value
+count_value
 ```
 
-```{r binding subset tables together}
-
-# Combine all results into one data frame
+```{r warning=FALSE}
+# Combine all results of individual tibbles into one data frame
 result_table <- bind_rows(result_list_updated, .id = "message") %>%
   group_by(message) %>%
   filter(row_number() == 1) %>%
@@ -233,52 +177,19 @@ result_table <- bind_rows(result_list_updated, .id = "message") %>%
 
 #result_table
 
+## Merge df_subset_long and result_table so I can visualize the frequency of ratings based on the messages column in the gt table after
 
-```
-
-```{r}
-# Calculate relative percentages for each row
-result_table <- result_table %>%
-  mutate(
-    total_ratings = rowSums(select(., starts_with("total_rating_"))),
-    pct_rating_1 = total_rating_1 / total_ratings * 100,
-    pct_rating_2 = total_rating_2 / total_ratings * 100,
-    pct_rating_3 = total_rating_3 / total_ratings * 100,
-    pct_rating_4 = total_rating_4 / total_ratings * 100,
-    pct_rating_5 = total_rating_5 / total_ratings * 100
-  )
-
-#result_table
-```
-
-
-```{r long format}
-
-result_long <- result_table %>%
-  select(message, pct_rating_1, pct_rating_2, pct_rating_3, pct_rating_4, pct_rating_5) %>%
-  pivot_longer(cols = starts_with("pct_rating_"), names_to = "rating", values_to = "percentage")
-
-```
-
-```{r}
-# Merge the data frames based on "full_message" and "message_id"
 merged_data <- merge(df_subset_long, result_table, by.x = "full_message", by.y = "message", all.x = TRUE)
 
-# Select the columns you want to keep
+# Select the columns to keep for gt table
 selected_columns <- c("personid","full_message", "rating_hateful", "mean_hatefulness", "sd_hatefulness", "message_id")
-
-# Create a new data frame with the selected columns
 df_merged_long <- merged_data[selected_columns]
 
-
 #df_merged_long
-
 ```
 
-
-```{r}
- ?gt_plt_dist
-
+```{r warning=FALSE}
+## Table 
 gt_tab <- df_merged_long %>%
   group_by(full_message) %>%
   summarize(
@@ -355,14 +266,5 @@ data_color(
   )
 
 gt_tab
-
-?tab_spanner
 ```
-
-
-```{r}
-
-```
-
-
 
